@@ -61,7 +61,7 @@ const CheckoutPage: React.FC = () => {
 
         try {
 
-            const response = await axios.post('http://0.0.0.0:8081/checkout', {
+            const response = await axios.post('http://127.0.0.1:8081/checkout', {
                 user: {
                     name: formData.userName,
                     contact: formData.userContact,
@@ -74,6 +74,7 @@ const CheckoutPage: React.FC = () => {
                 userComment: formData.userComment,
                 items: [
                     {
+                        id: book.id,
                         name: book.title,
                         quantity: 1,
                     },

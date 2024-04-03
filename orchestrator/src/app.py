@@ -32,8 +32,15 @@ def verify_transaction(transaction_data):
     with grpc.insecure_channel('transaction_ver:50052') as channel:
         stub = transaction_ver_grpc.TransactionVerificationServiceStub(channel)
 
+        if type(transaction_data["items"]) == dict:
+            transaction_data["items"] = [transaction_data["items"]]
+
         # Make data suitable for proto file
         transaction_data = transaction_ver.Transaction(
+            items=[transaction_ver.Item(
+                bookid=item['id'],
+                quantity=item['quantity']
+            ) for item in transaction_data['items']],
             user=transaction_ver.User(
                 name=transaction_data['user']['name'],
                 contact=transaction_data['user']['contact']
@@ -60,15 +67,7 @@ def getBookSuggestions(data):
         response = stub.getSuggestions(suggestions.getSuggestionsRequest(bookid = id))
     return response.items
 
-def detectFraud(data):
-    total_qty = data['items'][0]['quantity']
-    # Connect to the fraud detection service.
-    with grpc.insecure_channel('fraud_detection:50051') as channel:
-        # Create a stub object.
-        stub = fraud_detection_grpc.FraudDetectionServiceStub(channel)
-        # Call the service through the stub object.
-        response = stub.FraudDetection(fraud_detection.FraudRequest(total_qty=total_qty))
-    return response
+
 
 
 
@@ -113,26 +112,25 @@ def checkout():
         print(f"Schema validation failed: {e}")
         return {"error": {"code": "400", "message": f"Schema validation failed: {e}"}}, 400
 
-    functions = [verify_transaction, detectFraud, getBookSuggestions]
+    functions = [verify_transaction, getBookSuggestions]
 
     try:
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             # Submit tasks to the thread pool
             futures = [executor.submit(f, data) for f in functions]
 
             # Wait for all tasks to complete
-            verification_response, fraud_response, book_suggestions = [future.result() for future in futures]
+            verification_response, book_suggestions = [future.result() for future in futures]
     except Exception as e:
         print(e)
 
 
-    print(f"verification respnse: {verification_response}")
-    print(f"fraud response: {fraud_response}")
+    print(f"verification and fraud respnse: {verification_response}")
     print(f"book suggestions: {book_suggestions}")
 
 
 
-    if verification_response.is_valid and fraud_response.is_valid:
+    if verification_response.is_valid:
         order_status_response = {
             'orderId': '12345',
             'status': 'Order Approved',

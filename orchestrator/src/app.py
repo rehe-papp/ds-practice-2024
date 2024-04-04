@@ -3,6 +3,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from jsonschema import validate
 import json
+from multiprocessing import Value
 
 # This set of lines are needed to import the gRPC stubs.
 # The path of the stubs is relative to the current file, or absolute inside the container.
@@ -25,15 +26,26 @@ import transaction_ver_pb2_grpc as transaction_ver_grpc
 
 import grpc
 
+from utils.pb.transaction_ver.transaction_ver_pb2 import VectorClock
+from utils.pb.suggestions.suggestions_pb2 import VectorClock
+
+order_id_count = Value('i', 0)
 
 
 
-def verify_transaction(transaction_data):
+
+def verify_transaction(transaction_data, vector_clock):
+    print(f'verify transaction attempt {vector_clock}')
+    vector_clock.clock['transaction_ver'] += 1
+    print(f"vector clock updated: {vector_clock}")
+
     with grpc.insecure_channel('transaction_ver:50052') as channel:
         stub = transaction_ver_grpc.TransactionVerificationServiceStub(channel)
 
         if type(transaction_data["items"]) == dict:
             transaction_data["items"] = [transaction_data["items"]]
+
+        print(f"Transaction data: {transaction_data}")
 
         # Make data suitable for proto file
         transaction_data = transaction_ver.Transaction(
@@ -53,19 +65,38 @@ def verify_transaction(transaction_data):
         )
 
         # verification request
-        response = stub.VerifyTransaction(
-            transaction_ver.VerifyTransactionRequest(transaction=transaction_data))
+        print(f"Before response")
+        try:
+            response = stub.VerifyTransaction(transaction_ver.VerifyTransactionRequest(
+                transaction=transaction_data,
+                vector_clock=transaction_ver.VectorClock(clock=vector_clock.clock)))
+        except Exception as e:
+            print(f"Exception in verify_transaction: {e}")
+            return {"error": {"code": "500", "message": "Internal Server Error"}}, 500
+        print(f"After response")
         return response
 
 
-def getBookSuggestions(data):
+def getBookSuggestions(data, vector_clock):
+    print(f'getting book suggestions {vector_clock}')
+    vector_clock.clock['suggestions'] += 1
+    print(f"vector clock updated: {vector_clock}")
     id = data['items'][0]['id']
     with grpc.insecure_channel('suggestions:50053') as channel:
         # Create a stub object.
         stub = suggestions_grpc.SuggestionsServiceStub(channel)
         # Call the service through the stub object.
-        response = stub.getSuggestions(suggestions.getSuggestionsRequest(bookid = id))
-    return response.items
+        response = stub.getSuggestions(suggestions.getSuggestionsRequest(bookid=id))
+        try:
+            print(f"before response")
+            request = suggestions.getSuggestionsRequest(bookid=id,
+                vector_clock=suggestions.VectorClock(clock=vector_clock.clock))
+            response = stub.getSuggestions(request)
+            print(f"after response")
+        except Exception as e:
+            print(f"Exception in getBookSuggestions: {e}")
+            return {"error": {"code": "500", "message": "Internal Server Error"}}, 500
+        return response.items, response.vector_clock
 
 
 
@@ -99,6 +130,12 @@ def checkout():
     """
     Responds with a JSON object containing the order ID, status, and suggested books.
     """
+    with order_id_count.get_lock():
+        vector_clock = VectorClock(clock={'order_id': order_id_count.value,
+                                          'transaction_ver': 0,
+                                          'fraud_detection': 0,
+                                          'suggestions': 0, })
+        order_id_count.value += 1
     data = request.json
     # Print request object data
     print("Request Data:", request.json)
@@ -117,7 +154,7 @@ def checkout():
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
             # Submit tasks to the thread pool
-            futures = [executor.submit(f, data) for f in functions]
+            futures = [executor.submit(f, data, vector_clock) for f in functions]
 
             # Wait for all tasks to complete
             verification_response, book_suggestions = [future.result() for future in futures]

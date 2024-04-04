@@ -15,9 +15,9 @@ class FraudDetectionServiceStub(object):
             channel: A grpc.Channel.
         """
         self.FraudDetection = channel.unary_unary(
-            '/fraud_detection.FraudDetectionService/FraudDetection',
-            request_serializer=fraud__detection__pb2.FraudRequest.SerializeToString,
-            response_deserializer=fraud__detection__pb2.FraudResponse.FromString,
+                '/fraud_detection.FraudDetectionService/FraudDetection',
+                request_serializer=fraud__detection__pb2.FraudRequest.SerializeToString,
+                response_deserializer=fraud__detection__pb2.FraudResponse.FromString,
                 )
 
 
@@ -34,9 +34,9 @@ class FraudDetectionServiceServicer(object):
 def add_FraudDetectionServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'FraudDetection': grpc.unary_unary_rpc_method_handler(
-                servicer.FraudDetection,
-                request_deserializer=fraud__detection__pb2.FraudRequest.FromString,
-                response_serializer=fraud__detection__pb2.FraudResponse.SerializeToString,
+                    servicer.FraudDetection,
+                    request_deserializer=fraud__detection__pb2.FraudRequest.FromString,
+                    response_serializer=fraud__detection__pb2.FraudResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(

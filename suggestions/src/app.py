@@ -24,12 +24,16 @@ books = {"1":{"title":"Learning Python","author":"John Smith"},
 class SuggestionsService(suggestions_service_grpc.SuggestionsServiceServicer):
 
     def getSuggestions(self, request, context):
+        print("Suggestions service called.")
+        request.vector_clock.clock['suggestions'] += 1
+        print(f"Suggestions service vector clock updated: {request.vector_clock}")
+
         suggestions = [i for i in books if request.bookid != i]
 
         response = []
         for i in suggestions[:3]:
             response.append(suggestions_service.Book(bookid = i, title=books[i]["title"], author=books[i]["author"]))
-        return suggestions_service.SuggestionsResponse(items=response)
+        return suggestions_service.SuggestionsResponse(items=response, vector_clock = request.vector_clock)
 
 def serve():
     # Create a gRPC server

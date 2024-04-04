@@ -10,6 +10,7 @@ class SuggestionsServiceStub(object):
 
     def __init__(self, channel):
         """Constructor.
+
         Args:
             channel: A grpc.Channel.
         """
@@ -18,6 +19,8 @@ class SuggestionsServiceStub(object):
                 request_serializer=suggestions__pb2.getSuggestionsRequest.SerializeToString,
                 response_deserializer=suggestions__pb2.SuggestionsResponse.FromString,
                 )
+
+
 class SuggestionsServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
@@ -26,6 +29,7 @@ class SuggestionsServiceServicer(object):
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
+
 
 def add_SuggestionsServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -41,23 +45,22 @@ def add_SuggestionsServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-
 class SuggestionsService(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
     def getSuggestions(request,
-                       target,
-                       options=(),
-                       channel_credentials=None,
-                       call_credentials=None,
-                       insecure=False,
-                       compression=None,
-                       wait_for_ready=None,
-                       timeout=None,
-                       metadata=None):
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
         return grpc.experimental.unary_unary(request, target, '/suggestions.SuggestionsService/getSuggestions',
-                                             suggestions__pb2.getSuggestionsRequest.SerializeToString,
-                                             suggestions__pb2.SuggestionsResponse.FromString,
-                                             options, channel_credentials,
-                                             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            suggestions__pb2.getSuggestionsRequest.SerializeToString,
+            suggestions__pb2.SuggestionsResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

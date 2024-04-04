@@ -12,10 +12,12 @@ FILE = __file__ if '__file__' in globals() else os.getenv("PYTHONFILE", "")
 utils_path1 = os.path.abspath(os.path.join(FILE, '../../../utils/pb/fraud_detection'))
 utils_path2 = os.path.abspath(os.path.join(FILE, '../../../utils/pb/suggestions'))
 utils_path3 = os.path.abspath(os.path.join(FILE, '../../../utils/pb/transaction_ver'))
+utils_path4 = os.path.abspath(os.path.join(FILE, '../../../utils/pb/order_queue'))
 
 sys.path.insert(0, utils_path1)
 sys.path.insert(0, utils_path2)
 sys.path.insert(0, utils_path3)
+sys.path.insert(0, utils_path4)
 
 import fraud_detection_pb2 as fraud_detection
 import fraud_detection_pb2_grpc as fraud_detection_grpc
@@ -23,6 +25,8 @@ import suggestions_pb2 as suggestions
 import suggestions_pb2_grpc as suggestions_grpc
 import transaction_ver_pb2 as transaction_ver
 import transaction_ver_pb2_grpc as transaction_ver_grpc
+import order_queue_pb2 as order_queue
+import order_queue_pb2_grpc as order_queue_grpc
 
 import grpc
 
@@ -32,6 +36,19 @@ from utils.pb.suggestions.suggestions_pb2 import VectorClock
 order_id_count = Value('i', 0)
 
 
+def enqueue_order(order_data):
+    # Connects to order queue service and sends the data to queue
+    with grpc.insecure_channel('order_queue:50054') as channel:
+        stub = order_queue_grpc.OrderQueueServiceStub(channel)
+        try:
+            order_message = order_queue_grpc.Order(
+                orderId=order_data['orderId'],
+                userName=order_data['user']['name'])
+            response = stub.Enqueue(order_queue.EnqueueRequest(order=order_message))
+        except Exception as e:
+            print(f"Exception in enqueue_order: {e}")
+            return {"error": {"code": "500","message": "Internal Server Error"}}, 500
+        return response
 
 
 def verify_transaction(transaction_data, vector_clock):
@@ -42,6 +59,7 @@ def verify_transaction(transaction_data, vector_clock):
     with grpc.insecure_channel('transaction_ver:50052') as channel:
         stub = transaction_ver_grpc.TransactionVerificationServiceStub(channel)
 
+        print(f">>>>>> Transaction data: {transaction_data}")
         if type(transaction_data["items"]) == dict:
             transaction_data["items"] = [transaction_data["items"]]
 
@@ -65,7 +83,7 @@ def verify_transaction(transaction_data, vector_clock):
         )
 
         # verification request
-        print(f"Before response")
+        print(f">> Before response")
         try:
             response = stub.VerifyTransaction(transaction_ver.VerifyTransactionRequest(
                 transaction=transaction_data,
@@ -73,7 +91,7 @@ def verify_transaction(transaction_data, vector_clock):
         except Exception as e:
             print(f"Exception in verify_transaction: {e}")
             return {"error": {"code": "500", "message": "Internal Server Error"}}, 500
-        print(f"After response")
+        print(f">> After response")
         return response
 
 
@@ -96,7 +114,7 @@ def getBookSuggestions(data, vector_clock):
         except Exception as e:
             print(f"Exception in getBookSuggestions: {e}")
             return {"error": {"code": "500", "message": "Internal Server Error"}}, 500
-        return response.items, response.vector_clock
+        return response
 
 
 
@@ -165,22 +183,31 @@ def checkout():
     print(f"verification and fraud respnse: {verification_response}")
     print(f"book suggestions: {book_suggestions}")
 
+    try:
+        print(f'>> vector clock {vector_clock}')
+        verification_response = verify_transaction(data, vector_clock)
+        print(f">> Verification and Fraud Response: {verification_response}")
 
 
-    if verification_response.is_valid:
-        order_status_response = {
-            'orderId': '12345',
-            'status': 'Order Approved',
-            'suggestedBooks': [
-                {'bookId': book.bookid, 'title': book.title, 'author': book.author} for book in book_suggestions
-            ]
-        }
+        if verification_response.is_valid:
+            book_suggestions_response = getBookSuggestions(data, vector_clock)
+            print(f">> Book Suggestions response: {book_suggestions_response}")
+            order_status_response = {
+                'orderId': book_suggestions_response.vector_clock.clock['order_id'],
+                'status': 'Order Approved',
+                'suggestedBooks': [
+                    {'bookId': book.bookid, 'title': book.title, 'author': book.author} for book in book_suggestions_response.items
+                ]
+            }
 
-    else:
-        order_status_response = {
-            'orderId': '12345',
-            'status': "Order Rejected",
-        }
+        else:
+            order_status_response = {
+                'orderId': verification_response.vector_clock.clock['order_id'],
+                'status': "Order Rejected",
+            }
+
+    except Exception as e:
+        return {"error": {"code": "500", "message": "Internal Server Error"}}, 500
         # Dummy response following the provided YAML specification for the bookstore
         # order_status_response = {
         #     'orderId': '12345',
@@ -192,7 +219,7 @@ def checkout():
         # }
 
     print(order_status_response)
-    return jsonify(order_status_response)
+    return order_status_response, 200
 
 
 if __name__ == '__main__':

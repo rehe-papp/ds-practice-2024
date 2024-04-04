@@ -34,7 +34,6 @@ def detectFraud(data, vector_clock):
 
     total_qty = data.items[0].quantity
 
-    print(f">>>>>> total_qty {total_qty}")
     # Connect to the fraud detection service.
     with grpc.insecure_channel('fraud_detection:50051') as channel:
         # Create a stub object.
@@ -43,15 +42,12 @@ def detectFraud(data, vector_clock):
         try:
             response = stub.FraudDetection(fraud_detection.FraudRequest(total_qty=total_qty,
                                                                         vector_clock=fraud_detection.VectorClock(clock=vector_clock.clock)))
-            if response.is_valid:
-                print(f">> returned from trans verif after fraud ok, {response}")
-                #   transaction_verification.VerifyTransactionResponse(is_valid=True,vector_clock = transaction_verification.VectorClock(clock=response.vector_clock.clock)))
-                return response
-            return transaction_ver.VerifyTransactionResponse(is_valid=False,
-                                                             error_message="Transaction is fraud")
+            print(f">> response {response}")
+            return response
         except Exception as e:
             return transaction_ver.VerifyTransactionResponse(is_valid=False,
-                                                             error_message=f"Exception in detectFraud: {e}")
+                                                             error_message=f"Exception in detectFraud: {e}",
+                                                             vector_clock=vector_clock)
 
 class TransactionVerificationService(transaction_ver_grpc.TransactionVerificationServiceServicer):
     def VerifyTransaction(self, request, context):
@@ -66,11 +62,13 @@ class TransactionVerificationService(transaction_ver_grpc.TransactionVerificatio
                                                              error_message='Missing user name or contact',
                                                              vector_clock=request.vector_clock)
         print(">> Transaction verification service user name and contact verified.")
+        request.vector_clock.clock['transaction_ver'] += 1
         if not re.match(r'^[0-9]{16}$', request.transaction.credit_card.number):
             return transaction_ver.VerifyTransactionResponse(is_valid=False,
                                                              error_message="Invalid credit card number.",
                                                              vector_clock=request.vector_clock)
         print(">> Transaction verification service credit card number verified.")
+        request.vector_clock.clock['transaction_ver'] += 1
 
         current_year, current_month = datetime.datetime.today().year, datetime.datetime.today().month
         expiration_date = request.transaction.credit_card.expirationDate
@@ -88,6 +86,7 @@ class TransactionVerificationService(transaction_ver_grpc.TransactionVerificatio
                                                              error_message="Credit card is expired or .",
                                                              vector_clock=request.vector_clock)
         print(">> Transaction verification service credit card expiration date verified.")
+        request.vector_clock.clock['transaction_ver'] += 1
         try:
             print(">> Transaction verification service called fraud detection service.")
             return detectFraud(request.transaction, request.vector_clock)
